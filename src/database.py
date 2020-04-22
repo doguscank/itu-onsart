@@ -42,6 +42,8 @@ class Term:
 		self.url = url
 		self.courses = courses
 		self.course_names = list()
+		self.itb_count = 0
+		self.has_snt = False
 
 class Course:
 	def __init__(self, course_code, course_no, req = None, compulsary = True, course_type = CourseType.NORMAL):
@@ -143,6 +145,15 @@ class Database:
 						course_type = get_type(a_list[0].text.split("(")[1][:-1])
 					else:
 						course_type = CourseType.NORMAL
+
+					if course_type == CourseType.SNT:
+						if term is not None:
+							term.has_snt = True
+							continue
+					elif course_type == CourseType.ITB:
+						if term is not None:
+							term.itb_count += 1
+							continue
 
 					courses = self.update_courses(term = term, course_url = "{}{}/{}".format(self.program_url, program, href), courses = courses, course_type = course_type)
 					continue
