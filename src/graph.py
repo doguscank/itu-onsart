@@ -3,7 +3,7 @@ import database as db
 from database import CourseType
 
 def draw_graph(term):
-	g = pydot.Dot(graph_type = 'digraph', pack = True)
+	g = pydot.Dot(graph_type = 'digraph', pack = True, label = "{} {}".format(term.program_code, term.name), labelloc = 't')
 
 	for c in term.courses:
 		types = [CourseType.NORMAL, CourseType.ITB, CourseType.MT, CourseType.TM, CourseType.TB, CourseType.SNT]
