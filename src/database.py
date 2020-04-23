@@ -23,6 +23,12 @@ def fix_tr_chars(to_fix):
 	fixed = to_fix.translate(table)
 	return fixed
 
+def fix_spaces(to_fix):
+	if '\t' in to_fix or '\n' in to_fix:
+		return " ".join(x.strip() for x in to_fix.split('\n')).strip()
+	else:
+		return to_fix
+
 class Faculty:
 	def __init__(self, code, name, programs = None):
 		self.code = code
@@ -54,12 +60,46 @@ class Course:
 		self.course_type = course_type
 		self.name = "{} {}".format(self.course_code, self.course_no)
 
+class DMajorFaculty:
+	def __init__(self, name, code, url, programs = None):
+		self.name = name
+		self.code = code
+		self.url = url
+		self.programs = programs
+
+class DMajorProgram:
+	def __init__(self, name, has_terms = True, terms = None, url = None, courses = None):
+		self.name = name
+		self.getter = name.split('-')[0]
+		if '-' in name:
+			self.dest_program = name.split('-')[1]
+		elif '_' in name:
+			self.dest_program = name.split('_')[1]
+		self.terms = terms
+		self.has_terms = has_terms
+
+class DMajorTerm:
+	def __init__(self, name, url, courses = None, program_name = None):
+		self.name = name
+		self.url = url
+		self.courses = courses
+		self.course_names = list()
+		self.program_name = program_name
+
 class Database:
 	def __init__(self):
 		self.faculties_list = list()
+		self.dmajor_faculties = list()
 
 		self.database_url = "http://www.sis.itu.edu.tr/tr/dersplan/index.php"
 		self.program_url = "http://www.sis.itu.edu.tr/tr/dersplan/plan/"
+		self.dmajor_url = "http://www.sis.itu.edu.tr/tr/capprg/"
+		self.dmajor_course_url = "http://www.sis.itu.edu.tr/tr/icerik/icerik.php?"
+		"""
+		Use http://www.sis.itu.edu.tr/tr/icerik/icerik.php?subj=FIZ&numb=101 template to get double major courses from database.
+		Another way to get courses is to use http://www.sis.itu.edu.tr/tr/icerik/ only but it displays result without changing URL
+		so getting data is harder than using template URL.
+		"""
 		self.manager = urllib3.PoolManager(1) #Create pool manager to get data from URLs
 
 	#Updates faculty programs
@@ -143,6 +183,8 @@ class Database:
 					#This means this course has many options to choose
 					if '(' in a_list[0].text:
 						course_type = get_type(a_list[0].text.split("(")[1][:-1])
+					elif '-' in a_list[0].text:
+						course_type = get_type(a_list[0].text.split("-")[1])
 					else:
 						course_type = CourseType.NORMAL
 
@@ -200,3 +242,117 @@ class Database:
 								c.req[i] = c.req[i][1:]
 							if ')' in c.req[i]:
 								c.req[i] = c.req[i][:-1]
+
+	def update_dmajor_faculties(self):
+		html = self.manager.urlopen('GET', self.dmajor_url)
+		soup = BeautifulSoup(html.data, 'lxml')
+
+		data = soup.find_all('table')[2].find_all('td')[1].find_all('a')
+		
+		for a in data:
+			name = fix_tr_chars(a.text[1:])
+			url = a['href']
+			code = url.split('.')[0]
+			f = DMajorFaculty(name, code, url)
+			self.dmajor_faculties.append(f)
+
+	def update_dmajor_programs(self, faculty):
+		html = self.manager.urlopen('GET', "{}{}".format(self.dmajor_url, faculty.url))
+		soup = BeautifulSoup(html.data, 'lxml')
+
+		programs = list()
+
+		data = soup.find_all('table')[0].find_all('tr')[1:]
+		for tr in data:
+			code = fix_spaces(fix_tr_chars(tr.find_all('td')[2].text.strip()))
+			if 'INDEX' in tr.find_all('td')[2].find('a')['href']:
+				has_terms = True
+			else:
+				has_terms = False
+			programs.append(DMajorProgram(code, has_terms = has_terms))
+
+		faculty.programs = programs
+
+	def update_dmajor_terms(self, program, url = None):
+		if program.terms is None:
+			program.terms = list()
+
+		if program.has_terms:
+			if url is None:
+				html = self.manager.urlopen('GET', "{}INDEX_{}_{}.html".format(self.dmajor_url, program.getter, program.dest_program))
+			else:
+				html = self.manager.urlopen('GET', url)		
+
+			print(url)
+			soup = BeautifulSoup(html.data, 'lxml')			
+
+			data = soup.find_all('a')
+			for a in data:
+				if 'INDEX' in a['href']:
+					self.update_dmajor_terms(program, url = a['href'])
+					continue
+
+				if '\t' in a.text or '\n' in a.text:
+					name = fix_spaces(a.text)
+				else:
+					name = a.text
+
+				if program.has_terms:
+					program.terms.append(DMajorTerm(name, a['href'], program_name = program.name))
+		else:
+			href = "{}{}_{}.html".format(self.dmajor_url, program.getter, program.dest_program)
+			program.terms.append(DMajorTerm(program.name, href, program_name = program.name))
+
+	def update_dmajor_courses(self, term, course_url = None, course_type = CourseType.NORMAL, table_index = 1):
+		if course_url is None:
+			html = self.manager.urlopen('GET', term.url)
+		else:
+			html = self.manager.urlopen('GET', course_url)
+
+		soup = BeautifulSoup(html.data, 'lxml')
+
+		if term.courses is None:
+			term.courses = list()
+
+		data = soup.find_all('table')[table_index]
+		for tr in data.find_all('tr')[1:-1]:
+			tds = tr.find_all('td')	
+
+			if tds[1].find('a') is not None and len(tds[1].find('a')) != 0:
+				href = tds[1].find('a')['href']
+				#This means this course has many options to choose
+				if '(' in tds[1].text:
+					course_type = get_type(tds[1].text.split("(")[1][:-1])
+				elif '-' in tds[1].text:
+					course_type = get_type(tds[1].text.split("-")[1])
+				else:
+					course_type = CourseType.NORMAL
+
+				self.update_dmajor_courses(term = term, course_url = href, course_type = course_type, table_index = 0)
+				continue
+
+			name = fix_spaces(tds[0].text).replace('*', '').strip()
+
+			if name in term.course_names:
+				continue
+			else:
+				term.course_names.append(name)
+
+			subj, numb = name.split(" ")
+			course_url = "http://www.sis.itu.edu.tr/tr/icerik/icerik.php?subj={}&numb={}".format(subj, numb)
+			course_html = self.manager.urlopen('GET', course_url)
+			course_soup = BeautifulSoup(course_html.data, 'lxml')
+
+			info_tables = course_soup.find_all('table', {'class':'plan'})
+
+			compulsary = True if fix_spaces(tds[2].text) == 'Z' else False
+
+			req = info_tables[2].find_all('tr')[1].find_all('td')[1].text
+			if req == "Yok/None": req = None
+
+			print(req)
+
+			new_course = Course(subj, numb, req, compulsary, course_type)
+			term.courses.append(new_course)
+
+		self.update_course_reqs(term)
