@@ -200,6 +200,7 @@ class Database:
 					courses = self.update_courses(term = term, course_url = "{}{}/{}".format(self.program_url, program, href), courses = courses, course_type = course_type)
 					continue
 
+				#print(href)
 				course_html = self.manager.urlopen('GET', href)
 				course_soup = BeautifulSoup(course_html.data, 'lxml')
 
@@ -234,7 +235,9 @@ class Database:
 				if c.req is not None: #Check if course has prerequisitied courses
 					if or_split in c.req: #Check if the prerequisitied course is not single
 						c.req = c.req.split(or_split)
-					
+						
+						#print(c.req)
+
 						for i in range(len(c.req)):
 							c.req[i] = c.req[i].split(min_split)[0]
 
@@ -242,6 +245,8 @@ class Database:
 								c.req[i] = c.req[i][1:]
 							if ')' in c.req[i]:
 								c.req[i] = c.req[i][:-1]
+
+						#print(c.req)
 
 	def update_dmajor_faculties(self):
 		html = self.manager.urlopen('GET', self.dmajor_url)
@@ -350,7 +355,7 @@ class Database:
 			req = info_tables[2].find_all('tr')[1].find_all('td')[1].text
 			if req == "Yok/None": req = None
 
-			print(req)
+			#print(req)
 
 			new_course = Course(subj, numb, req, compulsary, course_type)
 			term.courses.append(new_course)

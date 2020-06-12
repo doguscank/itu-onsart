@@ -19,10 +19,13 @@ def draw_graph(term, dmajor_term = None):
 
 	if dmajor_term is None:
 		courses = term.courses
+		course_names = term.course_names
 	else:
 		courses = term.courses
 		if dmajor_term.courses is not None:
 			courses.extend(dmajor_term.courses)
+
+		course_names = [c.name for c in courses]
 
 	for c in courses:
 		types = [CourseType.NORMAL, CourseType.ITB, CourseType.MT, CourseType.TM, CourseType.TB, CourseType.SNT]
@@ -43,9 +46,11 @@ def draw_graph(term, dmajor_term = None):
 
 		g.add_node(pydot.Node(c.name, style = 'filled', shape = selected_shape, fillcolor = selected_color, fontcolor = 'white'))
 		
+		#print(c.name, c.req)
+
 		if c.req is not None:
 			for r in c.req:
-				if r in term.course_names:
+				if r in course_names:
 					g.add_edge(pydot.Edge(pydot.Node(r), pydot.Node(c.name)))
 
 	if term.has_snt:
